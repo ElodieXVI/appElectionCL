@@ -26,14 +26,30 @@ ui <- fluidPage(
     .shiny-text-output {
       background-color:#fff;
     }
+    .info-block {
+      background-color: #d0e7ff;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .title-background {
+    background-image: url('fond.jpeg');
+      background-color: #1f2985;
+      color: white;
+      padding: 10px;
+      margin-bottom: 20px;
+      border-radius: 5px;
+      text-align: center;
+    }
   "))),
-  
+  div(class = "title-background",
   h1("Aide aux votes",
      style = "
-        color: #1f2985; text-align: center;
+        color: #fff; text-align: center;
         background-image: url('fond.png');
-        padding: 20px"),
+        padding: 20px")),
   br(),
+  div(class = "info-block",
   fluidRow(
     column(6, offset = 3,
            p("Cet outil a été créé pour le vote du CL parisien. Il permet de nettoyer un fichier de vote qui a été 
@@ -49,7 +65,7 @@ ui <- fluidPage(
            a("Code source", class = "btn btn-primary btn-md", 
              href = "https://github.com/ElodieXVI/appElectionCL")
     )
-  ),
+  )),
   
   br(),
   
@@ -76,7 +92,8 @@ ui <- fluidPage(
              downloadButton("clean_download", "Télécharger le fichier de votes nettoyé"),
              br(),
              textOutput("file1_info"),
-             textOutput("file2_info")
+             textOutput("file2_info"),
+             textOutput("error_message")
            ))
   )
 )
@@ -92,7 +109,11 @@ server <- function(input, output, session) {
     inFileID <- input$fileID
     if (is.null(inFileID))
       return(NULL)
-    dataID(read_excel(inFileID$datapath))
+    tryCatch({
+      dataID(read_excel(inFileID$datapath))
+    }, error = function(e) {
+      output$error_message <- renderText({"Erreur lors de la lecture du fichier contacts : vérifiez le format et les colonnes."})
+    })
   })
   
   # Charger les données du premier fichier Excel
@@ -103,7 +124,11 @@ server <- function(input, output, session) {
     inFile1 <- input$file1
     if (is.null(inFile1))
       return(NULL)
-    data1(read_excel(inFile1$datapath))
+    tryCatch({
+      data1(read_excel(inFile1$datapath))
+    }, error = function(e) {
+      output$error_message <- renderText({"Erreur lors de la lecture du fichier de votes : vérifiez le format et les colonnes."})
+    })
   })
   
   # Charger les données du deuxième fichier Excel
@@ -114,7 +139,11 @@ server <- function(input, output, session) {
     inFile2 <- input$file2
     if (is.null(inFile2))
       return(NULL)
-    data2(read_excel(inFile2$datapath))
+    tryCatch({
+      data2(read_excel(inFile2$datapath))
+    }, error = function(e) {
+      output$error_message <- renderText({"Erreur lors de la lecture du fichier des IDs : vérifiez le format et les colonnes."})
+    })
   })
   
   # Définir reactiveValues pour stocker les données nettoyées
@@ -131,15 +160,28 @@ server <- function(input, output, session) {
   # Nettoyer les données
   observeEvent(input$clean_button, {
     req(data1(), data2())
-    names(data1())[2] <- "ID"
-    data2_clean <- data2() %>% mutate(votant = "Votant")
-    data1_aug <- left_join(data1(), data2_clean, by = "ID")
-    data1_aug <- data1_aug %>% mutate(votant = ifelse(is.na(votant), "Non votant", votant))
-    data1_clean <- data1_aug %>%
-      group_by(ID) %>%
-      filter(row_number() == n())
-    data_finale <- data1_clean %>% filter(votant == "Votant")
-    cleaned_data(data_finale)
+    tryCatch({
+      # Partie de nettoyage des données data1 et data2
+      data1_temp <- data1() %>% rename(ID = 2)
+      data2_clean <- data2() %>% mutate(liste = "Liste")
+      
+      data1_aug <- left_join(data1_temp, data2_clean, by = "ID")
+      
+      data1_aug <- data1_aug %>% mutate(liste = ifelse(is.na(liste), "Pas liste", liste))
+      
+      data1_aug <- data1_aug %>%
+        group_by(ID) %>%
+        mutate(doublon = ifelse(row_number() == n(), "A conserver", "A supprimer")) %>% 
+        ungroup()
+      
+      data_finale <- data1_aug %>% mutate(
+        votant = ifelse(liste == "Liste" & doublon == "A conserver", "Votant", "Non votant")
+      ) %>% select(-liste, -doublon)
+      
+      cleaned_data(data_finale)
+    }, error = function(e) {
+      output$error_message <- renderText({"Erreur lors du nettoyage des données. Vérifiez que les fichiers contiennent les colonnes nécessaires."})
+    })
   })
   
   # Download Excel ID ----
@@ -182,6 +224,9 @@ server <- function(input, output, session) {
       paste("Nombre de lignes dans le fichier 2 :", nrow(data2()))
     }
   })
+  
+  # Afficher les messages d'erreur
+  output$error_message <- renderText({ "" })
   
   # Afficher le tableau des valeurs de la variable "votant" dans les données nettoyées
   output$votant_table <- renderTable({
