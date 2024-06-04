@@ -1,32 +1,99 @@
 library(shiny)
 library(readxl)
 library(dplyr)
+library(openxlsx)
+
+generate_unique_codes <- function(n) {
+  codes <- character(n)
+  letters_part <- function() paste0(sample(LETTERS, 3, replace = TRUE), collapse = "")
+  numbers_part <- function() sprintf("%03d", sample(0:999, 1))
+  
+  for (i in 1:n) {
+    repeat {
+      code <- paste0(letters_part(), numbers_part())
+      if (!code %in% codes) {
+        codes[i] <- code
+        break
+      }
+    }
+  }
+  return(codes)
+}
 
 # Définition de l'interface utilisateur
 ui <- fluidPage(
-  titlePanel("Nettoyage fichier votant·e·s"),
-  sidebarLayout(
-    sidebarPanel(
-      fileInput("file1", "Fichier de votes (.xlsx)"),
-      fileInput("file2", "Liste des ID (.xlsx)"),
-      tags$hr(),
-      actionButton("clean_button", "Nettoyer"),
-      br(),
-      downloadButton("clean_download", "Télécharger le fichier de votes nettoyé"),
-      br(),
-      textOutput("file1_info"),
-      textOutput("file2_info")
-    ),
-    mainPanel(
-      uiOutput("progress_bar"),
-      br(),
-      tableOutput("votant_table")
+  tags$head(tags$style(HTML("
+    .shiny-text-output {
+      background-color:#fff;
+    }
+  "))),
+  
+  h1("Aide aux votes",
+     style = "
+        color: #1f2985; text-align: center;
+        background-image: url('fond.png');
+        padding: 20px"),
+  br(),
+  fluidRow(
+    column(6, offset = 3,
+           p("Cet outil a été créé pour le vote du CL parisien. Il permet de nettoyer un fichier de vote qui a été 
+             réalisé avec un ID (identifiant confidentiel rattaché à une personne) extrait de Google Form. 
+             Il ne prend en entrée que les fichiers xlsx. En sortie vous obtenez un fichier xlsx."),
+           p("1. Générer des ID aléatoires (3 lettres, 3 chiffres) pour un fichier de contact"),
+           p("2. Envoyer un mail à l'ensemble des participant·e·s au vote leur donnant leur ID confidentiel"),
+           p("3. Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel
+             "),
+           p("4. Récupérer en format xlsx les résultats du vote et les déposer ici. : les doubles votant·e·s seront supprimés 
+             et seuls compris dans la liste retenu"),
+           br(),
+           a("Code source", class = "btn btn-primary btn-md", 
+             href = "https://github.com/ElodieXVI/appElectionCL")
     )
+  ),
+  
+  br(),
+  
+  fluidRow(
+    column(6,
+           wellPanel(
+             h3("Génération ID"),
+             fileInput("fileID", "Fichier contacts (.xlsx)"),
+             tags$hr(),
+             actionButton("cleanID_button", "Générer ID"),
+             br(),
+             downloadButton("cleanID_download", "Télécharger le fichier de contacts avec ID"),
+             br(),
+             textOutput("fileID_info"),
+           )),
+    column(6,
+           wellPanel(
+             h3("Nettoyage fichier de votes issu de gform"),
+             fileInput("file1", "Fichier de votes (.xlsx)"),
+             fileInput("file2", "Liste des ID (.xlsx)"),
+             tags$hr(),
+             actionButton("clean_button", "Nettoyer"),
+             br(),
+             downloadButton("clean_download", "Télécharger le fichier de votes nettoyé"),
+             br(),
+             textOutput("file1_info"),
+             textOutput("file2_info")
+           ))
   )
 )
 
 # Définition du serveur
 server <- function(input, output, session) {
+  
+  # Data ID
+  dataID <- reactiveVal(NULL)
+  
+  observeEvent(input$fileID, {
+    req(input$fileID)
+    inFileID <- input$fileID
+    if (is.null(inFileID))
+      return(NULL)
+    dataID(read_excel(inFileID$datapath))
+  })
   
   # Charger les données du premier fichier Excel
   data1 <- reactiveVal(NULL)
@@ -52,25 +119,22 @@ server <- function(input, output, session) {
   
   # Définir reactiveValues pour stocker les données nettoyées
   cleaned_data <- reactiveVal(NULL)
+  cleanedID_data <- reactiveVal(NULL)
   
-  # Afficher la barre de chargement
-  output$progress_bar <- renderUI({
-    if (is.null(cleaned_data()) || is.null(data1()) || is.null(data2())) return(NULL)
-    tagList(
-      if (!input$clean_button) {
-        div(class = "progress", style = "height: 20px;",
-            div(class = "progress-bar", role = "progressbar", style = "width: 0%;", "0%"))
-      }
-    )
+  # Nettoyer les ID
+  observeEvent(input$cleanID_button, {
+    req(dataID())
+    dataID_finale <- dataID() %>% mutate(ID = generate_unique_codes(nrow(.)))
+    cleanedID_data(dataID_finale)
   })
   
   # Nettoyer les données
   observeEvent(input$clean_button, {
     req(data1(), data2())
-    
-    data2_clean <- data2() %>% mutate(votant = 1)
+    names(data1())[2] <- "ID"
+    data2_clean <- data2() %>% mutate(votant = "Votant")
     data1_aug <- left_join(data1(), data2_clean, by = "ID")
-    data1_aug <- data1_aug %>% mutate(votant = ifelse(is.na(votant), "Non votant", "Votant"))
+    data1_aug <- data1_aug %>% mutate(votant = ifelse(is.na(votant), "Non votant", votant))
     data1_clean <- data1_aug %>%
       group_by(ID) %>%
       filter(row_number() == n())
@@ -78,18 +142,35 @@ server <- function(input, output, session) {
     cleaned_data(data_finale)
   })
   
-  # Downloadable csv of selected dataset ----
-  output$clean_download <- downloadHandler(
-    filename =  function() {
-      paste('resultats_vote.csv', sep=',')
+  # Download Excel ID ----
+  output$cleanID_download <- downloadHandler(
+    filename = function() {
+      paste('contacts_ID.xlsx', sep = '')
     },
     
     content = function(filename) {
-      write.csv(as.data.frame(cleaned_data()), filename, row.names=FALSE)
-    } 
+      write.xlsx(as.data.frame(cleanedID_data()), filename)
+    }
+  )
+  
+  # Download Excel données nettoyées ----
+  output$clean_download <- downloadHandler(
+    filename = function() {
+      paste('resultats_vote.xlsx', sep = '')
+    },
+    
+    content = function(filename) {
+      write.xlsx(as.data.frame(cleaned_data()), filename)
+    }
   )
   
   # Afficher le nombre de lignes pour chaque fichier téléchargé
+  output$fileID_info <- renderText({
+    if (!is.null(dataID())) {
+      paste("Nombre de lignes dans le fichier contacts :", nrow(dataID()))
+    }
+  })
+  
   output$file1_info <- renderText({
     if (!is.null(data1())) {
       paste("Nombre de lignes dans le fichier 1 :", nrow(data1()))
