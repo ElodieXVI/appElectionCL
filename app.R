@@ -165,7 +165,7 @@ server <- function(input, output, session) {
       data1_temp <- data1() %>% rename(ID = 2)
       data2_clean <- data2() %>% mutate(liste = "Liste")
       
-      data1_aug <- left_join(data1_temp, data2_clean, by = "ID")
+      data1_aug <- left_join(data1_temp, data2_clean %>% select(ID, liste), by = "ID")
       
       data1_aug <- data1_aug %>% mutate(liste = ifelse(is.na(liste), "Pas liste", liste))
       
