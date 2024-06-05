@@ -52,15 +52,15 @@ ui <- fluidPage(
   div(class = "info-block",
   fluidRow(
     column(6, offset = 3,
-           p("Cet outil a été créé pour le vote du CL parisien. Il permet de nettoyer un fichier de vote qui a été 
-             réalisé avec un ID (identifiant confidentiel rattaché à une personne) extrait de Google Form. 
-             Il ne prend en entrée que les fichiers xlsx. En sortie vous obtenez un fichier xlsx."),
-           p("1. Générer des ID aléatoires (3 lettres, 3 chiffres) pour un fichier de contact"),
-           p("2. Envoyer un mail à l'ensemble des participant·e·s au vote leur donnant leur ID confidentiel"),
-           p("3. Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel
+           p("Cet outil a été créé pour le vote du CL parisien. Il aide à réalisationd d'un vote confidentiel avec Google Form. 
+             Les fichiers pris en charge en générés sont au format xlsx."),
+           p("Voici un processus de vote possible avec cet outil :"),
+           p("Avant le vote - Via ce site et à partir d'un fichier de contact : générer des ID aléatoires (3 lettres, 3 chiffres)"),
+           p("Avant le vote - Par Gmail : envoyer par mail à l'ensemble des participant·e·s au vote leur ID confidentiel"),
+           p("Le vote - Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel
              "),
-           p("4. Récupérer en format xlsx les résultats du vote et les déposer ici. : les doubles votant·e·s seront supprimés 
-             et seuls compris dans la liste retenu"),
+           p("Après le vote - Récupérer en format xlsx les résultats du vote et les déposer ici : les doubles votant·e·s seront supprimés 
+             et seuls les votants compris dans la liste ID retenu"),
            br(),
            a("Code source", class = "btn btn-primary btn-md", 
              href = "https://github.com/ElodieXVI/appElectionCL")
@@ -85,9 +85,10 @@ ui <- fluidPage(
            wellPanel(
              h3("Nettoyage fichier de votes issu de gform"),
              fileInput("file1", "Fichier de votes (.xlsx)"),
+             p("Attention : déposer ici seulement la liste des ID et pas le fichier contacts en entier !"),
              fileInput("file2", "Liste des ID (.xlsx)"),
              tags$hr(),
-             actionButton("clean_button", "Nettoyer"),
+             actionButton("clean_button", "Détecter les non votants"),
              br(),
              downloadButton("clean_download", "Télécharger le fichier de votes nettoyé"),
              br(),
