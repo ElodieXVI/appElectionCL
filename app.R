@@ -53,13 +53,12 @@ ui <- fluidPage(
   div(class = "info-block",
       fluidRow(
         column(6, offset = 3,
-               p("Cet outil a été créé pour le vote du CL parisien. Il aide à réalisationd d'un vote confidentiel avec Google Form. 
-             Les fichiers pris en charge en générés sont au format xlsx."),
-               p("Voici un processus de vote possible avec cet outil :"),
+               p("Cet outil a été créé pour le vote du CL parisien. Il aide à la mise en oeuvre d'un vote confidentiel avec Google Form. 
+             Les fichiers pris en charge et générés sont au format xlsx."),
+               p("Voici le processus de vote possible avec cet outil :"),
                p("Avant le vote - Via ce site et à partir d'un fichier de contact : générer des ID aléatoires (3 lettres, 3 chiffres)"),
                p("Avant le vote - Par Gmail : envoyer par mail à l'ensemble des participant·e·s au vote leur ID confidentiel"),
-               p("Le vote - Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel
-             "),
+               p("Le vote - Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel"),
                p("Après le vote - Récupérer en format xlsx les résultats du vote et les déposer ici : les doubles votant·e·s seront supprimés 
              et seuls les votants compris dans la liste ID retenu"),
                br(),
@@ -73,10 +72,11 @@ ui <- fluidPage(
   fluidRow(
     column(6,
            wellPanel(
-             h3("Génération ID"),
+             h3("Génération ID aléatoire"),
              fileInput("fileID", "Fichier contacts (.xlsx)"),
-             tags$hr(),
+             # tags$hr(),
              actionButton("cleanID_button", "Générer ID"),
+             br(),
              br(),
              downloadButton("cleanID_download", "Télécharger le fichier de contacts avec ID"),
              br(),
@@ -84,14 +84,15 @@ ui <- fluidPage(
            )),
     column(6,
            wellPanel(
-             h3("Nettoyage fichier de votes issu de gform"),
+             h3("Vérification des votes issu de Gform"),
              fileInput("file1", "Fichier de votes (.xlsx)"),
              p("Attention : déposer ici seulement la liste des ID et pas le fichier contacts en entier !"),
              fileInput("file2", "Liste des ID (.xlsx)"),
-             tags$hr(),
-             actionButton("clean_button", "Détecter les non votants"),
+             # tags$hr(),
+             actionButton("clean_button", "Détecter les votes à exclure"),
              br(),
-             downloadButton("clean_download", "Télécharger le fichier de votes nettoyé"),
+             br(),
+            downloadButton("clean_download", "Télécharger le fichier de votes avec la détection"),
              br(),
              textOutput("file1_info"),
              textOutput("file2_info"),
@@ -102,8 +103,8 @@ ui <- fluidPage(
   fluidRow(
     column(6, offset = 3,
            wellPanel(
-             h3("Vérification"),
-             p("Affichage de 5 lignes aléatoires pour vérifier la détection des votants"),
+             h3("Check de la détection des votes à exclure"),
+             p("Affichage uniquement des ID et de leur statut pour vérifier la détection des votes à exclure"),
              dataTableOutput("table"),
              textOutput("error_message")
            ))
@@ -180,6 +181,10 @@ server <- function(input, output, session) {
       data1_temp <- data1() %>% rename(ID = 2)
       data2_clean <- data2() %>% mutate(liste = "Liste")
       
+      data1_temp <- data1_temp %>% mutate(
+        ID = toupper(as.character(ID))
+      )
+      
       data1_aug <- left_join(data1_temp, data2_clean %>% select(ID, liste), by = "ID")
       
       data1_aug <- data1_aug %>% mutate(liste = ifelse(is.na(liste), "Pas liste", liste))
@@ -187,11 +192,15 @@ server <- function(input, output, session) {
       data1_aug <- data1_aug %>%
         group_by(ID) %>%
         mutate(doublon = ifelse(row_number() == n(), "A conserver", "A supprimer")) %>% 
-        ungroup()
+        ungroup() %>% mutate(
+        votant = ifelse(liste == "Liste" & doublon == "A conserver", "Votant", "Non votant"))
       
       data_finale <- data1_aug %>% mutate(
-        votant = ifelse(liste == "Liste" & doublon == "A conserver", "Votant", "Non votant")
-      ) %>% select(-liste, -doublon)
+        N = nrow(.):1
+      ) %>% select(-1, -liste, -doublon, -ID) %>% arrange(N) %>% relocate(N, .before = 1)
+      
+      # sampled_ids <- data1_aug$ID %>% unique() %>% sample(5)
+      sampled_data <- data1_aug %>% select(ID, votant) 
       
       cleaned_data(data_finale)
       output$error_message <- renderText({""}) # Clear any previous error messages
@@ -201,7 +210,7 @@ server <- function(input, output, session) {
       
       # Afficher les lignes sélectionnées dans un tableau
       output$table <- DT::renderDataTable({
-        DT::datatable(sample_n(data_finale, 3))
+        DT::datatable(sampled_data)
       })
     }, error = function(e) {
       output$error_message <- renderText({"Erreur lors du nettoyage des données. Vérifiez que les fichiers contiennent les colonnes nécessaires."})
