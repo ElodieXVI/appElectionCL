@@ -2,6 +2,7 @@ library(shiny)
 library(readxl)
 library(dplyr)
 library(openxlsx)
+library(DT)
 
 generate_unique_codes <- function(n) {
   codes <- character(n)
@@ -43,29 +44,29 @@ ui <- fluidPage(
     }
   "))),
   div(class = "title-background",
-  h1("Aide aux votes",
-     style = "
+      h1("Aide aux votes",
+         style = "
         color: #fff; text-align: center;
         background-image: url('fond.png');
         padding: 20px")),
   br(),
   div(class = "info-block",
-  fluidRow(
-    column(6, offset = 3,
-           p("Cet outil a été créé pour le vote du CL parisien. Il aide à réalisationd d'un vote confidentiel avec Google Form. 
+      fluidRow(
+        column(6, offset = 3,
+               p("Cet outil a été créé pour le vote du CL parisien. Il aide à réalisationd d'un vote confidentiel avec Google Form. 
              Les fichiers pris en charge en générés sont au format xlsx."),
-           p("Voici un processus de vote possible avec cet outil :"),
-           p("Avant le vote - Via ce site et à partir d'un fichier de contact : générer des ID aléatoires (3 lettres, 3 chiffres)"),
-           p("Avant le vote - Par Gmail : envoyer par mail à l'ensemble des participant·e·s au vote leur ID confidentiel"),
-           p("Le vote - Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel
+               p("Voici un processus de vote possible avec cet outil :"),
+               p("Avant le vote - Via ce site et à partir d'un fichier de contact : générer des ID aléatoires (3 lettres, 3 chiffres)"),
+               p("Avant le vote - Par Gmail : envoyer par mail à l'ensemble des participant·e·s au vote leur ID confidentiel"),
+               p("Le vote - Procéder au vote sur Google Form en demandant aux participant·e·s d'entrer uniquement leur ID confidentiel
              "),
-           p("Après le vote - Récupérer en format xlsx les résultats du vote et les déposer ici : les doubles votant·e·s seront supprimés 
+               p("Après le vote - Récupérer en format xlsx les résultats du vote et les déposer ici : les doubles votant·e·s seront supprimés 
              et seuls les votants compris dans la liste ID retenu"),
-           br(),
-           a("Code source", class = "btn btn-primary btn-md", 
-             href = "https://github.com/ElodieXVI/appElectionCL")
-    )
-  )),
+               br(),
+               a("Code source", class = "btn btn-primary btn-md", 
+                 href = "https://github.com/ElodieXVI/appElectionCL")
+        )
+      )),
   
   br(),
   
@@ -96,6 +97,16 @@ ui <- fluidPage(
              textOutput("file2_info"),
              textOutput("error_message")
            ))
+  ),
+
+  fluidRow(
+    column(6, offset = 3,
+           wellPanel(
+             h3("Vérification"),
+             p("Affichage de 5 lignes aléatoires pour vérifier la détection des votants"),
+             dataTableOutput("table"),
+             textOutput("error_message")
+           ))
   )
 )
 
@@ -112,6 +123,7 @@ server <- function(input, output, session) {
       return(NULL)
     tryCatch({
       dataID(read_excel(inFileID$datapath))
+      output$error_message <- renderText({""}) # Clear any previous error messages
     }, error = function(e) {
       output$error_message <- renderText({"Erreur lors de la lecture du fichier contacts : vérifiez le format et les colonnes."})
     })
@@ -127,6 +139,7 @@ server <- function(input, output, session) {
       return(NULL)
     tryCatch({
       data1(read_excel(inFile1$datapath))
+      output$error_message <- renderText({""}) # Clear any previous error messages
     }, error = function(e) {
       output$error_message <- renderText({"Erreur lors de la lecture du fichier de votes : vérifiez le format et les colonnes."})
     })
@@ -142,6 +155,7 @@ server <- function(input, output, session) {
       return(NULL)
     tryCatch({
       data2(read_excel(inFile2$datapath))
+      output$error_message <- renderText({""}) # Clear any previous error messages
     }, error = function(e) {
       output$error_message <- renderText({"Erreur lors de la lecture du fichier des IDs : vérifiez le format et les colonnes."})
     })
@@ -158,7 +172,7 @@ server <- function(input, output, session) {
     cleanedID_data(dataID_finale)
   })
   
-  # Nettoyer les données
+  # Nettoyer les données et afficher l'échantillon aléatoire
   observeEvent(input$clean_button, {
     req(data1(), data2())
     tryCatch({
@@ -180,6 +194,15 @@ server <- function(input, output, session) {
       ) %>% select(-liste, -doublon)
       
       cleaned_data(data_finale)
+      output$error_message <- renderText({""}) # Clear any previous error messages
+      # 
+      # # Sélectionner 6 lignes aléatoires du DataFrame nettoyé
+      # echantillon <- sample_n(as.data.frame(cleaned_data(data_finale)), 6)
+      
+      # Afficher les lignes sélectionnées dans un tableau
+      output$table <- DT::renderDataTable({
+        DT::datatable(sample_n(data_finale, 3))
+      })
     }, error = function(e) {
       output$error_message <- renderText({"Erreur lors du nettoyage des données. Vérifiez que les fichiers contiennent les colonnes nécessaires."})
     })
@@ -229,11 +252,7 @@ server <- function(input, output, session) {
   # Afficher les messages d'erreur
   output$error_message <- renderText({ "" })
   
-  # Afficher le tableau des valeurs de la variable "votant" dans les données nettoyées
-  output$votant_table <- renderTable({
-    req(cleaned_data())
-    table(cleaned_data()$votant)
-  })
+
 }
 
 # Exécution de l'application
